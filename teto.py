@@ -96,6 +96,13 @@ class TetrisGame(Widget):
                         y = (GRID_HEIGHT - (self.piece_y + row_idx) - 1) * BLOCK_SIZE
                         Rectangle(pos=(x, y), size=(BLOCK_SIZE, BLOCK_SIZE))
 
+    def move_piece(self, dx):
+        new_x = self.piece_x + dx
+        if not self.check_collision(new_x, self.piece_y, self.piece):
+            self.piece_x = new_x
+            self.draw()
+
+
 class TetrisRoot(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -107,12 +114,25 @@ class TetrisRoot(BoxLayout):
 
         # ボタンパネル
         button_panel = BoxLayout(orientation='vertical', size_hint=(0.2, 1))
-        btn_left = Button(text='左回転')
-        btn_right = Button(text='右回転')
+        
+        # 回転ボタン
+        btn_left = Button(text='rotate-left')
+        btn_right = Button(text='rotate-right')
         btn_left.bind(on_press=lambda instance: self.game.rotate_current_piece("left"))
         btn_right.bind(on_press=lambda instance: self.game.rotate_current_piece("right"))
+        
+        # 左右移動ボタン
+        btn_move_left = Button(text='move-Left')
+        btn_move_right = Button(text='move-Right')
+        btn_move_left.bind(on_press=lambda instance: self.game.move_piece(-1))
+        btn_move_right.bind(on_press=lambda instance: self.game.move_piece(1))
+        
+        # ボタンをパネルに追加
         button_panel.add_widget(btn_left)
         button_panel.add_widget(btn_right)
+        button_panel.add_widget(btn_move_left)
+        button_panel.add_widget(btn_move_right)
+
         self.add_widget(button_panel)
 
 class TetrisApp(App):
