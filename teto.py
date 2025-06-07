@@ -2,7 +2,7 @@ import random
 from kivy.app import App
 from kivy.uix.widget import Widget
 from kivy.clock import Clock
-from kivy.graphics import Rectangle, Color
+from kivy.graphics import Rectangle, Color, Line
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 
@@ -33,7 +33,7 @@ class TetrisGame(Widget):
         super().__init__(**kwargs)
         self.grid = [[0 for _ in range(GRID_WIDTH)] for _ in range(GRID_HEIGHT)]
         self.spawn_new_piece()
-        Clock.schedule_interval(self.update, 0.5)
+        Clock.schedule_interval(self.update, 1)
 
     def spawn_new_piece(self):
         self.piece_type = random.choice(list(TETROMINOS.keys()))
@@ -82,19 +82,40 @@ class TetrisGame(Widget):
     def draw(self):
         self.canvas.clear()
         with self.canvas:
+            # 背景グリッド線を先に描く
+            Color(0.6, 0.6, 0.6)
+            for y in range(GRID_HEIGHT):
+                for x in range(GRID_WIDTH):
+                    pos_x = x * BLOCK_SIZE
+                    pos_y = (GRID_HEIGHT - y - 1) * BLOCK_SIZE
+                    Line(rectangle=(pos_x, pos_y, BLOCK_SIZE, BLOCK_SIZE), width=1)
+            
+            # 固定されたブロックの描画
             for y in range(GRID_HEIGHT):
                 for x in range(GRID_WIDTH):
                     if self.grid[y][x]:
-                        Color(0.3, 0.3, 0.3)
-                        Rectangle(pos=(x * BLOCK_SIZE, (GRID_HEIGHT - y - 1) * BLOCK_SIZE),
-                                  size=(BLOCK_SIZE, BLOCK_SIZE))
+                        Color(0.3, 0.3, 0.3)  # ブロックの塗りつぶし色
+                        pos_x = x * BLOCK_SIZE
+                        pos_y = (GRID_HEIGHT - y - 1) * BLOCK_SIZE
+                        Rectangle(pos=(pos_x, pos_y), size=(BLOCK_SIZE, BLOCK_SIZE))
+
+                        # 枠線を描画（黒色）
+                        Color(0, 0, 0)
+                        Line(rectangle=(pos_x, pos_y, BLOCK_SIZE, BLOCK_SIZE), width=1)
+
+            
+            # 落下中のミノの描画
             for row_idx, row in enumerate(self.piece):
                 for col_idx, cell in enumerate(row):
                     if cell:
-                        Color(1, 0, 0)
+                        Color(1, 0, 0)  # ミノの色（赤）
                         x = (self.piece_x + col_idx) * BLOCK_SIZE
                         y = (GRID_HEIGHT - (self.piece_y + row_idx) - 1) * BLOCK_SIZE
                         Rectangle(pos=(x, y), size=(BLOCK_SIZE, BLOCK_SIZE))
+
+                        # 枠線を描画（黒色）
+                        Color(0, 0, 0)
+                        Line(rectangle=(x, y, BLOCK_SIZE, BLOCK_SIZE), width=1)  
 
     def move_piece(self, dx):
         new_x = self.piece_x + dx
