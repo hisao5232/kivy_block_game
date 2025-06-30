@@ -7,15 +7,24 @@ from kivy.graphics import Line
 from kivy.clock import Clock
 import random
 
-class GameBoard(Widget):
+class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidgetを継承している。
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.cols = 10
-        self.rows = 20
-        self.cell_size = 0
+        super().__init__(**kwargs)  # 親クラス（Widget）の初期化を呼び出す
+
+        self.cols = 10  # 横方向のマスの数（テトリスなどでは通常10列）
+        self.rows = 20  # 縦方向のマスの数（テトリスの標準的な高さ）
+        self.cell_size = 0  # 各マスの大きさ（あとで計算される予定）
+
+        # ゲームボードのデータを2次元リストで表現（0 = 空、1など = ブロック）
         self.board = [[0]*self.cols for _ in range(self.rows)]
+
+        # 現在落下中のブロック（ピース）をランダムに取得
         self.current_piece = self.get_random_piece()
+
+        # 0.5秒ごとに update() メソッドを呼び出す（定期的な更新処理）
         Clock.schedule_interval(self.update, 0.5)
+
+        # ウィジェットのサイズまたは位置が変わったときに on_size を呼び出す
         self.bind(size=self.on_size, pos=self.on_size)
 
     def on_size(self, *args):
@@ -364,49 +373,57 @@ class GameBoard(Widget):
         self.lock_piece()
         self.draw()
 
-class TetrisUI(BoxLayout):
+class TetrisUI(BoxLayout):  # Tetrisアプリ全体のUIを構成するクラス。BoxLayoutを継承。
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = 'horizontal'
+        super().__init__(**kwargs)  # 親クラス(BoxLayout)の初期化
 
-        self.game_board = GameBoard()
+        self.orientation = 'horizontal'  # 水平方向にウィジェットを並べるレイアウトに設定
 
-        # 左コントロール
-        left_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))
-        left_move_btn = Button(text='L Move')
-        left_rotate_btn = Button(text='L Rotate')
-        left_move_btn.bind(on_press=lambda instance: self.game_board.move_piece(-1))
-        left_rotate_btn.bind(on_press=lambda instance: self.game_board.rotate_piece(left=True))
+        self.game_board = GameBoard()  # 中央に表示されるゲームボード（前に定義したGameBoardクラスのインスタンス）
+
+        # 左コントロールエリアの作成
+        left_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))  # 縦に並ぶボタン、画面幅の20%
+        left_move_btn = Button(text='L Move')  # 左移動ボタン
+        left_rotate_btn = Button(text='L Rotate')  # 左回転ボタン
+
+        # ボタンが押されたときに対応するGameBoardのメソッドを呼び出す
+        left_move_btn.bind(on_press=lambda instance: self.game_board.move_piece(-1))  # 左に1マス移動
+        left_rotate_btn.bind(on_press=lambda instance: self.game_board.rotate_piece(left=True))  # 左回転
+
+        # 左コントロールにボタンを追加
         left_controls.add_widget(left_move_btn)
         left_controls.add_widget(left_rotate_btn)
 
-        # 中央ゲーム画面
-        center_area = BoxLayout(size_hint=(0.6, 1))
-        center_area.add_widget(self.game_board)
-        self.game_board.size_hint = (1, 1)  # 明示的に設定
+        # 中央ゲームエリアの設定（ゲーム画面部分）
+        center_area = BoxLayout(size_hint=(0.6, 1))  # 幅の60%を占める
+        center_area.add_widget(self.game_board)  # ゲームボードを中央エリアに追加
+        self.game_board.size_hint = (1, 1)  # 明示的にサイズ比率を指定（エリアいっぱいに広がる）
 
-        # 右コントロール
-        right_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))
-        right_move_btn = Button(text='R Move')
-        right_rotate_btn = Button(text='R Rotate')
-        hard_drop_btn = Button(text='Hard Drop')  # 新規追加
+        # 右コントロールエリアの作成
+        right_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))  # 縦並び、画面幅の20%
+        right_move_btn = Button(text='R Move')  # 右移動ボタン
+        right_rotate_btn = Button(text='R Rotate')  # 右回転ボタン
+        hard_drop_btn = Button(text='Hard Drop')  # ハードドロップ（即座に落下させる）ボタン
 
-        right_move_btn.bind(on_press=lambda instance: self.game_board.move_piece(1))
-        right_rotate_btn.bind(on_press=lambda instance: self.game_board.rotate_piece(left=False))
-        hard_drop_btn.bind(on_press=lambda instance: self.game_board.hard_drop())  # バインド追加
+        # 各ボタンに機能をバインド（イベント接続）
+        right_move_btn.bind(on_press=lambda instance: self.game_board.move_piece(1))  # 右に1マス移動
+        right_rotate_btn.bind(on_press=lambda instance: self.game_board.rotate_piece(left=False))  # 右回転
+        hard_drop_btn.bind(on_press=lambda instance: self.game_board.hard_drop())  # 一気にブロックを落とす
 
+        # 右コントロールにボタンを追加
         right_controls.add_widget(right_move_btn)
         right_controls.add_widget(right_rotate_btn)
-        right_controls.add_widget(hard_drop_btn)  # 追加
+        right_controls.add_widget(hard_drop_btn)
 
-        # 全体レイアウトに追加
+        # 全体のレイアウトに、左・中央・右の各エリアを順番に追加
         self.add_widget(left_controls)
         self.add_widget(center_area)
         self.add_widget(right_controls)
 
-class TetrisApp(App):
+
+class TetrisApp(App):  # Kivyのアプリケーション全体を管理するクラス。Appを継承。
     def build(self):
-        return TetrisUI()
+        return TetrisUI()  # アプリのルートウィジェットとしてTetrisUI（画面のレイアウト）を返す
 
 if __name__ == '__main__':
     TetrisApp().run()
