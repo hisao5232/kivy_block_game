@@ -1,6 +1,8 @@
 from kivy.app import App
+from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle
 from kivy.graphics import Line
@@ -423,7 +425,49 @@ class TetrisUI(BoxLayout):  # Tetrisアプリ全体のUIを構成するクラス
 
 class TetrisApp(App):  # Kivyのアプリケーション全体を管理するクラス。Appを継承。
     def build(self):
-        return TetrisUI()  # アプリのルートウィジェットとしてTetrisUI（画面のレイアウト）を返す
+        return TetrisRoot()  # アプリのルートウィジェットとしてTetrisRoot（画面遷移）を返す
+
+# ゲーム画面
+class GameScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.add_widget(TetrisUI())  # これまで作ってきたゲームUIをここに表示
+
+# タイトル画面
+class TitleScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical')
+
+        # タイトルラベル
+        title_label = Label(text="TETRIS", font_size=48, size_hint=(1, 0.8))
+
+        # スタートボタン
+        start_button = Button(text='Start Game', size_hint=(1, 0.2))
+        start_button.bind(on_press=self.start_game)
+
+        layout.add_widget(title_label)
+        layout.add_widget(start_button)
+
+        self.add_widget(layout)
+
+    def start_game(self, instance):
+        # 親のScreenManagerのstart_gameを呼び出す
+        self.manager.start_game()
+
+# 画面遷移を管理
+class TetrisRoot(ScreenManager):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.add_widget(TitleScreen(name='title'))  # スクリーン名は 'title'
+        self.current = 'title'
+        
+    def start_game(self):
+        # このタイミングで初めてゲーム画面を生成して追加
+        if not self.has_screen('game'):
+            self.add_widget(GameScreen(name='game'))
+        self.current = 'game'
+
 
 if __name__ == '__main__':
     TetrisApp().run()
