@@ -7,6 +7,7 @@ from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle
 from kivy.graphics import Line
 from kivy.clock import Clock
+from kivy.uix.floatlayout import FloatLayout
 import random
 
 class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidgetを継承している。
@@ -22,12 +23,20 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
 
         # 現在落下中のブロック（ピース）をランダムに取得
         self.current_piece = self.get_random_piece()
-
-        # 0.5秒ごとに update() メソッドを呼び出す（定期的な更新処理）
-        Clock.schedule_interval(self.update, 0.5)
+        self._clock_event = None
+        self.is_game_over = False
 
         # ウィジェットのサイズまたは位置が変わったときに on_size を呼び出す
         self.bind(size=self.on_size, pos=self.on_size)
+
+    def start(self):
+        if not self._clock_event:
+            self._clock_event = Clock.schedule_interval(self.update, 0.5)
+
+    def stop(self):
+        if self._clock_event:
+            self._clock_event.cancel()
+            self._clock_event = None
 
     def on_size(self, *args):
         self.cell_size = min(self.width / self.cols, self.height / self.rows)
@@ -361,12 +370,35 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
         self.board = new_board
 
     def update(self, dt):
+        # すでにゲームオーバーなら何もしない
+        if self.is_game_over:
+            return
+
         x, y = self.current_piece['position']
+        
+        # 下に動かせるなら1マス落とす
         if self.can_move(0, 1):
             self.current_piece['position'] = (x, y + 1)
         else:
+            # 動かせないので固定する
             self.lock_piece()
+
+            # 💡 lock後にゲームオーバーを判定
+            if self.detect_game_over():
+                self.game_over()  # ここで止めて親に通知
+
+        # 毎フレーム描画更新
         self.draw()
+
+    def detect_game_over(self):
+        # 最上段にブロックが積もったかを判定
+        return any(cell != 0 for cell in self.board[0])
+
+    def game_over(self):
+        self.is_game_over = True
+        self.stop()
+        if hasattr(self.parent, 'show_game_over'):
+            self.parent.show_game_over()
 
     def hard_drop(self):
         while self.can_move(0, 1):
@@ -382,6 +414,25 @@ class TetrisUI(BoxLayout):  # Tetrisアプリ全体のUIを構成するクラス
         self.orientation = 'horizontal'  # 水平方向にウィジェットを並べるレイアウトに設定
 
         self.game_board = GameBoard()  # 中央に表示されるゲームボード（前に定義したGameBoardクラスのインスタンス）
+        #self.game_board.parent = self  # GameBoardから親にアクセス可能に
+
+        # ゲームオーバーUI（最初は非表示）
+        self.overlay = FloatLayout()
+        self.overlay_label = Label(text='GAME OVER', font_size='40sp',
+                                   size_hint=(None, None), size=(400, 100),
+                                   pos_hint={'center_x': 0.5, 'center_y': 0.7})
+        continue_btn = Button(text='コンティニュー', size_hint=(0.3, 0.1),
+                              pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        title_btn = Button(text='タイトルに戻る', size_hint=(0.3, 0.1),
+                           pos_hint={'center_x': 0.5, 'center_y': 0.35})
+
+        continue_btn.bind(on_press=self.continue_game)
+        title_btn.bind(on_press=self.back_to_title)
+
+        self.overlay.add_widget(self.overlay_label)
+        self.overlay.add_widget(continue_btn)
+        self.overlay.add_widget(title_btn)
+        self.overlay.opacity = 0  # 非表示にしておく
 
         # 左コントロールエリアの作成
         left_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))  # 縦に並ぶボタン、画面幅の20%
@@ -422,16 +473,34 @@ class TetrisUI(BoxLayout):  # Tetrisアプリ全体のUIを構成するクラス
         self.add_widget(center_area)
         self.add_widget(right_controls)
 
+    def show_game_over(self):
+        self.overlay.opacity = 1  # ゲームオーバー表示
 
-class TetrisApp(App):  # Kivyのアプリケーション全体を管理するクラス。Appを継承。
+    def continue_game(self, instance):
+        self.overlay.opacity = 0
+        self.game_board.reset()  # GameBoardにresetメソッドを用意してリセット
+        self.game_board.start()
+
+    def back_to_title(self, instance):
+        self.manager.current = 'title'
+
+class TetrisApp(App):
     def build(self):
-        return TetrisRoot()  # アプリのルートウィジェットとしてTetrisRoot（画面遷移）を返す
+        sm = MyScreenManager()  # 独自のScreenManagerで画面遷移を管理
+        sm.add_widget(TitleScreen(name='title'))  # 最初の画面を追加
+        sm.current = 'title'  # 初期表示を設定
+        return sm
+
 
 # ゲーム画面
 class GameScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.add_widget(TetrisUI())  # これまで作ってきたゲームUIをここに表示
+        self.tetris_ui = TetrisUI()
+        self.add_widget(self.tetris_ui)
+
+    def on_enter(self):
+        self.tetris_ui.game_board.start()
 
 # タイトル画面
 class TitleScreen(Screen):
@@ -451,9 +520,9 @@ class TitleScreen(Screen):
 
         self.add_widget(layout)
 
-    def start_game(self, instance):
-        # 親のScreenManagerのstart_gameを呼び出す
-        self.manager.start_game()
+    def start_game(self, *args):  # Buttonから呼ばれるときに引数が来るため
+        self.manager.start_game()  # 親のScreenManagerに処理を任せる
+
 
 # 画面遷移を管理
 class TetrisRoot(ScreenManager):
@@ -468,6 +537,14 @@ class TetrisRoot(ScreenManager):
             self.add_widget(GameScreen(name='game'))
         self.current = 'game'
 
+class MyScreenManager(ScreenManager):
+    def start_game(self):
+        if self.has_screen('game'):
+            self.remove_widget(self.get_screen('game'))
+
+        game_screen = GameScreen(name='game')
+        self.add_widget(game_screen)
+        self.current = 'game'
 
 if __name__ == '__main__':
     TetrisApp().run()
