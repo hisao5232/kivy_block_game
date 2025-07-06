@@ -11,32 +11,30 @@ from kivy.uix.floatlayout import FloatLayout
 import random
 
 class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidgetを継承している。
-    def __init__(self, **kwargs):
+    def __init__(self, parent_ui=None, **kwargs):
         super().__init__(**kwargs)  # 親クラス（Widget）の初期化を呼び出す
-
+        self.parent_ui = parent_ui  # 明示的にTetrisUIを受け取る
         self.cols = 10  # 横方向のマスの数（テトリスなどでは通常10列）
         self.rows = 20  # 縦方向のマスの数（テトリスの標準的な高さ）
         self.cell_size = 0  # 各マスの大きさ（あとで計算される予定）
-
         # ゲームボードのデータを2次元リストで表現（0 = 空、1など = ブロック）
         self.board = [[0]*self.cols for _ in range(self.rows)]
-
         # 現在落下中のブロック（ピース）をランダムに取得
         self.current_piece = self.get_random_piece()
         self._clock_event = None
         self.is_game_over = False
-
         # ウィジェットのサイズまたは位置が変わったときに on_size を呼び出す
         self.bind(size=self.on_size, pos=self.on_size)
 
     def start(self):
-        if not self._clock_event:
-            self._clock_event = Clock.schedule_interval(self.update, 0.5)
+        print("▶️ start called")
 
     def stop(self):
+        print("⏹ stop called")
         if self._clock_event:
             self._clock_event.cancel()
             self._clock_event = None
+            print("🛑 Clock cancelled")
 
     def on_size(self, *args):
         self.cell_size = min(self.width / self.cols, self.height / self.rows)
@@ -359,8 +357,7 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
 
         # 新しいピースが置けなければゲームオーバー（optional）
         if not self.can_move(0, 0):
-            print("Game Over")
-            self.board = [[0 for _ in range(self.cols)] for _ in range(self.rows)]
+            self.game_over()
 
     def clear_lines(self):
         new_board = [row for row in self.board if any(cell == 0 for cell in row)]
@@ -370,8 +367,9 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
         self.board = new_board
 
     def update(self, dt):
-        # すでにゲームオーバーなら何もしない
+        print("🌀 update running")
         if self.is_game_over:
+            print("⛔ update stopped: game over")
             return
 
         x, y = self.current_piece['position']
@@ -395,83 +393,99 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
         return any(cell != 0 for cell in self.board[0])
 
     def game_over(self):
+        print("Game Over")
         self.is_game_over = True
         self.stop()
-        if hasattr(self.parent, 'show_game_over'):
-            self.parent.show_game_over()
+        if self.parent_ui and hasattr(self.parent_ui, 'show_game_over'):
+            print("Calling parent's show_game_over()")
+            self.parent_ui.show_game_over()
+        else:
+            print("⚠️ No show_game_over method in parent_ui")
+            print(self.parent)
 
-    def hard_drop(self):
+    def hard_drop(self): 
         while self.can_move(0, 1):
             x, y = self.current_piece['position']
             self.current_piece['position'] = (x, y + 1)
         self.lock_piece()
         self.draw()
 
-class TetrisUI(BoxLayout):  # Tetrisアプリ全体のUIを構成するクラス。BoxLayoutを継承。
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)  # 親クラス(BoxLayout)の初期化
+    def reset(self):
+        print("🧹 Resetting GameBoard...")
 
-        self.orientation = 'horizontal'  # 水平方向にウィジェットを並べるレイアウトに設定
+        # ボードをクリア
+        self.board = [[0]*self.cols for _ in range(self.rows)]
 
-        self.game_board = GameBoard()  # 中央に表示されるゲームボード（前に定義したGameBoardクラスのインスタンス）
-        #self.game_board.parent = self  # GameBoardから親にアクセス可能に
+        # 落下中のブロックを新しくする
+        self.current_piece = self.get_random_piece()
 
-        # ゲームオーバーUI（最初は非表示）
-        self.overlay = FloatLayout()
-        self.overlay_label = Label(text='GAME OVER', font_size='40sp',
-                                   size_hint=(None, None), size=(400, 100),
-                                   pos_hint={'center_x': 0.5, 'center_y': 0.7})
-        continue_btn = Button(text='コンティニュー', size_hint=(0.3, 0.1),
-                              pos_hint={'center_x': 0.5, 'center_y': 0.5})
-        title_btn = Button(text='タイトルに戻る', size_hint=(0.3, 0.1),
-                           pos_hint={'center_x': 0.5, 'center_y': 0.35})
+        # フラグを初期化
+        self.is_game_over = False
 
-        continue_btn.bind(on_press=self.continue_game)
-        title_btn.bind(on_press=self.back_to_title)
+        # 既存の描画をすべて削除（必要なら）
+        self.clear_widgets()
 
-        self.overlay.add_widget(self.overlay_label)
-        self.overlay.add_widget(continue_btn)
-        self.overlay.add_widget(title_btn)
-        self.overlay.opacity = 0  # 非表示にしておく
+        # タイマーをリセット
+        self._clock_event = None
 
-        # 左コントロールエリアの作成
-        left_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))  # 縦に並ぶボタン、画面幅の20%
-        left_move_btn = Button(text='L Move')  # 左移動ボタン
-        left_rotate_btn = Button(text='L Rotate')  # 左回転ボタン
+class TetrisUI(FloatLayout):  # Tetrisアプリ全体のUIを構成するクラス。BoxLayoutを継承。
+    def __init__(self, screen_manager=None, **kwargs):
+        super().__init__(**kwargs)
+        self.screen_manager = screen_manager
+        self._clock_event = None
 
-        # ボタンが押されたときに対応するGameBoardのメソッドを呼び出す
-        left_move_btn.bind(on_press=lambda instance: self.game_board.move_piece(-1))  # 左に1マス移動
-        left_rotate_btn.bind(on_press=lambda instance: self.game_board.rotate_piece(left=True))  # 左回転
+        main_layout = BoxLayout(orientation='horizontal', size_hint=(1, 1))
 
-        # 左コントロールにボタンを追加
+        self.game_board = GameBoard(parent_ui=self)
+
+        # 左コントロール
+        left_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))
+        left_move_btn = Button(text='L Move')
+        left_rotate_btn = Button(text='L Rotate')
+        left_move_btn.bind(on_press=lambda instance: self.game_board.move_piece(-1))
+        left_rotate_btn.bind(on_press=lambda instance: self.game_board.rotate_piece(left=True))
         left_controls.add_widget(left_move_btn)
         left_controls.add_widget(left_rotate_btn)
 
-        # 中央ゲームエリアの設定（ゲーム画面部分）
-        center_area = BoxLayout(size_hint=(0.6, 1))  # 幅の60%を占める
-        center_area.add_widget(self.game_board)  # ゲームボードを中央エリアに追加
-        self.game_board.size_hint = (1, 1)  # 明示的にサイズ比率を指定（エリアいっぱいに広がる）
+        # 中央ゲームエリア
+        center_area = BoxLayout(size_hint=(0.6, 1))
+        center_area.add_widget(self.game_board)
+        self.game_board.size_hint = (1, 1)
 
-        # 右コントロールエリアの作成
-        right_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))  # 縦並び、画面幅の20%
-        right_move_btn = Button(text='R Move')  # 右移動ボタン
-        right_rotate_btn = Button(text='R Rotate')  # 右回転ボタン
-        hard_drop_btn = Button(text='Hard Drop')  # ハードドロップ（即座に落下させる）ボタン
-
-        # 各ボタンに機能をバインド（イベント接続）
-        right_move_btn.bind(on_press=lambda instance: self.game_board.move_piece(1))  # 右に1マス移動
-        right_rotate_btn.bind(on_press=lambda instance: self.game_board.rotate_piece(left=False))  # 右回転
-        hard_drop_btn.bind(on_press=lambda instance: self.game_board.hard_drop())  # 一気にブロックを落とす
-
-        # 右コントロールにボタンを追加
+        # 右コントロール
+        right_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))
+        right_move_btn = Button(text='R Move')
+        right_rotate_btn = Button(text='R Rotate')
+        hard_drop_btn = Button(text='Hard Drop')
+        right_move_btn.bind(on_press=lambda instance: self.game_board.move_piece(1))
+        right_rotate_btn.bind(on_press=lambda instance: self.game_board.rotate_piece(left=False))
+        hard_drop_btn.bind(on_press=lambda instance: self.game_board.hard_drop())
         right_controls.add_widget(right_move_btn)
         right_controls.add_widget(right_rotate_btn)
         right_controls.add_widget(hard_drop_btn)
 
-        # 全体のレイアウトに、左・中央・右の各エリアを順番に追加
-        self.add_widget(left_controls)
-        self.add_widget(center_area)
-        self.add_widget(right_controls)
+        main_layout.add_widget(left_controls)
+        main_layout.add_widget(center_area)
+        main_layout.add_widget(right_controls)
+
+        self.add_widget(main_layout)
+
+        # オーバーレイは最前面に表示
+        self.overlay = FloatLayout()
+        self.overlay_label = Label(text='GAME OVER', font_size='40sp',
+                                   size_hint=(None, None), size=(400, 100),
+                                   pos_hint={'center_x': 0.5, 'center_y': 0.7})
+        continue_btn = Button(text='Continue', size_hint=(0.3, 0.1),
+                              pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        title_btn = Button(text='Back to Title', size_hint=(0.3, 0.1),
+                           pos_hint={'center_x': 0.5, 'center_y': 0.35})
+        continue_btn.bind(on_press=self.continue_game)
+        title_btn.bind(on_press=self.back_to_title)
+        self.overlay.add_widget(self.overlay_label)
+        self.overlay.add_widget(continue_btn)
+        self.overlay.add_widget(title_btn)
+        self.overlay.opacity = 0
+        self.add_widget(self.overlay)
 
     def show_game_over(self):
         self.overlay.opacity = 1  # ゲームオーバー表示
@@ -479,28 +493,48 @@ class TetrisUI(BoxLayout):  # Tetrisアプリ全体のUIを構成するクラス
     def continue_game(self, instance):
         self.overlay.opacity = 0
         self.game_board.reset()  # GameBoardにresetメソッドを用意してリセット
+        self.cancel_update()     # ← これを追加
+        self.schedule_update()   # ← これを追加
         self.game_board.start()
 
     def back_to_title(self, instance):
-        self.manager.current = 'title'
+        self.cancel_update()
+        if self._clock_event:
+            self._clock_event.cancel()
+            self._clock_event = None
+        if self.screen_manager:
+            self.screen_manager.current = 'title'
+
+    def schedule_update(self):
+        if not self._clock_event:
+            self._clock_event = Clock.schedule_interval(self.update, 0.5)
+
+    def update(self, dt):
+        self.game_board.update(dt)  # GameBoardのupdateを呼ぶ
+
+    def cancel_update(self):
+        if self._clock_event:
+            self._clock_event.cancel()
+            self._clock_event = None
 
 class TetrisApp(App):
     def build(self):
         sm = MyScreenManager()  # 独自のScreenManagerで画面遷移を管理
         sm.add_widget(TitleScreen(name='title'))  # 最初の画面を追加
+        sm.add_widget(GameScreen(name='game'))  # ← ゲーム画面も追加
         sm.current = 'title'  # 初期表示を設定
         return sm
-
 
 # ゲーム画面
 class GameScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.tetris_ui = TetrisUI()
+        self.tetris_ui = TetrisUI()  # 一旦 screen_manager なしで初期化
         self.add_widget(self.tetris_ui)
 
     def on_enter(self):
-        self.tetris_ui.game_board.start()
+        # 画面遷移時に screen_manager を改めて設定（managerが使えるようになる）
+        self.tetris_ui.screen_manager = self.manager  # 遷移後に設定
 
 # タイトル画面
 class TitleScreen(Screen):
@@ -545,6 +579,8 @@ class MyScreenManager(ScreenManager):
         game_screen = GameScreen(name='game')
         self.add_widget(game_screen)
         self.current = 'game'
+
+        game_screen.tetris_ui.schedule_update()
 
 if __name__ == '__main__':
     TetrisApp().run()
