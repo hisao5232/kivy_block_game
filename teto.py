@@ -25,6 +25,7 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
         self.is_game_over = False
         # ウィジェットのサイズまたは位置が変わったときに on_size を呼び出す
         self.bind(size=self.on_size, pos=self.on_size)
+        self.score = 0
 
     def start(self):
         print("▶️ start called")
@@ -362,9 +363,17 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
     def clear_lines(self):
         new_board = [row for row in self.board if any(cell == 0 for cell in row)]
         lines_cleared = self.rows - len(new_board)
+
+        # 上に空行を追加してボードを再構築
         for _ in range(lines_cleared):
             new_board.insert(0, [0 for _ in range(self.cols)])
         self.board = new_board
+
+        # スコア更新（ラインを消した数を加算）
+        if lines_cleared > 0:
+            self.score += lines_cleared
+            if self.parent_ui:
+                self.parent_ui.update_score(self.score)
 
     def update(self, dt):
         print("🌀 update running")
@@ -427,6 +436,7 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
 
         # タイマーをリセット
         self._clock_event = None
+        self.score = 0
 
 class TetrisUI(FloatLayout):  # Tetrisアプリ全体のUIを構成するクラス。BoxLayoutを継承。
     def __init__(self, screen_manager=None, **kwargs):
@@ -442,10 +452,16 @@ class TetrisUI(FloatLayout):  # Tetrisアプリ全体のUIを構成するクラ�
         left_controls = BoxLayout(orientation='vertical', size_hint=(0.2, 1))
         left_move_btn = Button(text='L Move')
         left_rotate_btn = Button(text='L Rotate')
+        # スコア表示用ラベル
+        self.score_label = Label(text='Score: 0', font_size='20sp', size_hint=(1, 0.2),
+                         halign='center', valign='middle')
+        self.score_label.bind(size=self.score_label.setter('text_size'))  # テキストを中央に揃える
         left_move_btn.bind(on_press=lambda instance: self.game_board.move_piece(-1))
         left_rotate_btn.bind(on_press=lambda instance: self.game_board.rotate_piece(left=True))
         left_controls.add_widget(left_move_btn)
         left_controls.add_widget(left_rotate_btn)
+        left_controls.add_widget(Widget())  # 空白で真ん中調整
+        left_controls.add_widget(self.score_label)
 
         # 中央ゲームエリア
         center_area = BoxLayout(size_hint=(0.6, 1))
@@ -495,6 +511,7 @@ class TetrisUI(FloatLayout):  # Tetrisアプリ全体のUIを構成するクラ�
         self.game_board.reset()  # GameBoardにresetメソッドを用意してリセット
         self.cancel_update()     # ← これを追加
         self.schedule_update()   # ← これを追加
+        self.update_score(0)  # スコアをリセット
         self.game_board.start()
 
     def back_to_title(self, instance):
@@ -516,6 +533,9 @@ class TetrisUI(FloatLayout):  # Tetrisアプリ全体のUIを構成するクラ�
         if self._clock_event:
             self._clock_event.cancel()
             self._clock_event = None
+
+    def update_score(self, new_score):
+        self.score_label.text = f"Score: {new_score}"
 
 class TetrisApp(App):
     def build(self):
@@ -556,7 +576,6 @@ class TitleScreen(Screen):
 
     def start_game(self, *args):  # Buttonから呼ばれるときに引数が来るため
         self.manager.start_game()  # 親のScreenManagerに処理を任せる
-
 
 # 画面遷移を管理
 class TetrisRoot(ScreenManager):
