@@ -8,6 +8,7 @@ from kivy.graphics import Color, Rectangle
 from kivy.graphics import Line
 from kivy.clock import Clock
 from kivy.uix.floatlayout import FloatLayout
+from kivy.core.audio import SoundLoader
 import random
 
 class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidgetを継承している。
@@ -26,12 +27,19 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
         # ウィジェットのサイズまたは位置が変わったときに on_size を呼び出す
         self.bind(size=self.on_size, pos=self.on_size)
         self.score = 0
-
+        self.bgm = parent_ui.bgm  # ← 親のBGMを受け取る
+        if self.bgm:
+            self.bgm.loop = True  # ループ再生を有効にする
+            
     def start(self):
         print("▶️ start called")
+        if self.bgm:
+            self.bgm.play()  # ゲーム開始時にBGM再生
 
     def stop(self):
         print("⏹ stop called")
+        if self.bgm:
+            self.bgm.stop()
         if self._clock_event:
             self._clock_event.cancel()
             self._clock_event = None
@@ -444,6 +452,13 @@ class TetrisUI(FloatLayout):  # Tetrisアプリ全体のUIを構成するクラ�
         self.screen_manager = screen_manager
         self._clock_event = None
 
+        # ゲームボード作成前にBGMを読み込む
+        self.bgm = SoundLoader.load('assets\game_bgm.ogg')
+        if self.bgm:
+            self.bgm.loop = True
+        else:
+            print("⚠️ BGMファイルが読み込めませんでした")
+
         main_layout = BoxLayout(orientation='horizontal', size_hint=(1, 1))
 
         self.game_board = GameBoard(parent_ui=self)
@@ -519,6 +534,8 @@ class TetrisUI(FloatLayout):  # Tetrisアプリ全体のUIを構成するクラ�
         if self._clock_event:
             self._clock_event.cancel()
             self._clock_event = None
+        if self.game_board.bgm:
+            self.game_board.bgm.stop()
         if self.screen_manager:
             self.screen_manager.current = 'title'
 
@@ -549,12 +566,18 @@ class TetrisApp(App):
 class GameScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        print("🟠 GameScreen.__init__ called")
         self.tetris_ui = TetrisUI()  # 一旦 screen_manager なしで初期化
         self.add_widget(self.tetris_ui)
+        self.bgm = None  # ← BGMを保持する変数
 
     def on_enter(self):
+        print("🔶 GameScreen.on_enter called")
         # 画面遷移時に screen_manager を改めて設定（managerが使えるようになる）
         self.tetris_ui.screen_manager = self.manager  # 遷移後に設定
+        if self.tetris_ui and self.tetris_ui.game_board:
+            print("🔷 calling game_board.start() in on_enter")
+            self.tetris_ui.game_board.start()
 
 # タイトル画面
 class TitleScreen(Screen):
@@ -575,6 +598,7 @@ class TitleScreen(Screen):
         self.add_widget(layout)
 
     def start_game(self, *args):  # Buttonから呼ばれるときに引数が来るため
+        print("🟡 TitleScreen.start_game() called")
         self.manager.start_game()  # 親のScreenManagerに処理を任せる
 
 # 画面遷移を管理
@@ -585,10 +609,17 @@ class TetrisRoot(ScreenManager):
         self.current = 'title'
         
     def start_game(self):
-        # このタイミングで初めてゲーム画面を生成して追加
+        print("🟢 TetrisRoot.start_game() called")
         if not self.has_screen('game'):
             self.add_widget(GameScreen(name='game'))
         self.current = 'game'
+
+        # GameScreen 内の game_board を start
+        game_screen = self.get_screen('game')
+        print(f"🔵 game_screen: {game_screen}")
+        print(f"🔵 tetris_ui: {getattr(game_screen, 'tetris_ui', None)}")
+        print(f"🔵 game_board: {getattr(getattr(game_screen, 'tetris_ui', None), 'game_board', None)}")
+        game_screen.tetris_ui.game_board.start()
 
 class MyScreenManager(ScreenManager):
     def start_game(self):
