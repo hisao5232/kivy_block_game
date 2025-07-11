@@ -10,6 +10,7 @@ from kivy.clock import Clock
 from kivy.uix.floatlayout import FloatLayout
 from kivy.core.audio import SoundLoader
 import random
+import traceback
 
 class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidgetを継承している。
     def __init__(self, parent_ui=None, **kwargs):
@@ -23,7 +24,10 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
         # 現在落下中のブロック（ピース）をランダムに取得
         self.current_piece = self.get_random_piece()
         self._clock_event = None
+        self.update_event = None  # 後でキャンセルできるように
         self.is_game_over = False
+        # 万一 __init__ 前にスケジュールされていたらキャンセルする
+        Clock.unschedule(self.update)
         # ウィジェットのサイズまたは位置が変わったときに on_size を呼び出す
         self.bind(size=self.on_size, pos=self.on_size)
         self.score = 0
@@ -33,8 +37,12 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
             
     def start(self):
         print("▶️ start called")
+        if self.update_event:
+            self.update_event.cancel()
+        self.schedule_update()
         if self.bgm:
             self.bgm.play()  # ゲーム開始時にBGM再生
+        self.schedule_update()  # ← これを必ず追加
 
     def stop(self):
         print("⏹ stop called")
@@ -372,19 +380,33 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
         new_board = [row for row in self.board if any(cell == 0 for cell in row)]
         lines_cleared = self.rows - len(new_board)
 
-        # 上に空行を追加してボードを再構築
-        for _ in range(lines_cleared):
-            new_board.insert(0, [0 for _ in range(self.cols)])
-        self.board = new_board
-
-        # スコア更新（ラインを消した数を加算）
         if lines_cleared > 0:
+            # 落下処理の一時停止
+            if self.update_event:
+                print(f"[clear_lines] Canceling update_event id={id(self.update_event)}")
+                self.update_event.cancel()
+                self.update_event = None
+
+            # 効果音再生
+            if self.parent_ui and self.parent_ui.line_clear_se:
+                self.parent_ui.line_clear_se.play()
+
+            # 0.5秒後に再開
+            Clock.schedule_once(self.resume_game, 0.5)
+
+            # スコア更新（先にしておく）
             self.score += lines_cleared
             if self.parent_ui:
                 self.parent_ui.update_score(self.score)
 
+        # 再構築
+        for _ in range(lines_cleared):
+            new_board.insert(0, [0 for _ in range(self.cols)])
+        self.board = new_board
+
     def update(self, dt):
-        print("🌀 update running")
+        print(f"⚠️ update called before start() (dt={dt})")
+        traceback.print_stack(limit=10)
         if self.is_game_over:
             print("⛔ update stopped: game over")
             return
@@ -412,6 +434,9 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
     def game_over(self):
         print("Game Over")
         self.is_game_over = True
+        if self.update_event:
+            self.update_event.cancel()
+            self.update_event = None
         self.stop()
         if self.parent_ui and hasattr(self.parent_ui, 'show_game_over'):
             print("Calling parent's show_game_over()")
@@ -446,6 +471,23 @@ class GameBoard(Widget):  # ゲームボードを表すクラス。KivyのWidget
         self._clock_event = None
         self.score = 0
 
+    def resume_game(self, dt):
+        self.schedule_update()  # 落下処理を再開
+
+    def schedule_update(self):
+        if self.update_event is not None:
+            print("[schedule_update] Already scheduled, skipping.")
+            return
+        print("[schedule_update] Scheduling new update event.")
+        traceback.print_stack(limit=5)  # ← どこから呼ばれたか表示
+        self.update_event = Clock.schedule_interval(self.update, 0.5)
+        print(f"[schedule_update] Scheduled update_event id={id(self.update_event)}")
+
+    def stop_update(self):
+        if self.update_event:
+            self.update_event.cancel()
+            self.update_event = None
+
 class TetrisUI(FloatLayout):  # Tetrisアプリ全体のUIを構成するクラス。BoxLayoutを継承。
     def __init__(self, screen_manager=None, **kwargs):
         super().__init__(**kwargs)
@@ -458,6 +500,8 @@ class TetrisUI(FloatLayout):  # Tetrisアプリ全体のUIを構成するクラ�
             self.bgm.loop = True
         else:
             print("⚠️ BGMファイルが読み込めませんでした")
+        # 効果音ロード（ファイルがある場所を確認）
+        self.line_clear_se = SoundLoader.load('assets/line_clear.wav')
 
         main_layout = BoxLayout(orientation='horizontal', size_hint=(1, 1))
 
@@ -573,6 +617,7 @@ class GameScreen(Screen):
 
     def on_enter(self):
         print("🔶 GameScreen.on_enter called")
+        print("🔷 calling game_board.start() in on_enter")
         # 画面遷移時に screen_manager を改めて設定（managerが使えるようになる）
         self.tetris_ui.screen_manager = self.manager  # 遷移後に設定
         if self.tetris_ui and self.tetris_ui.game_board:
@@ -629,8 +674,6 @@ class MyScreenManager(ScreenManager):
         game_screen = GameScreen(name='game')
         self.add_widget(game_screen)
         self.current = 'game'
-
-        game_screen.tetris_ui.schedule_update()
 
 if __name__ == '__main__':
     TetrisApp().run()
